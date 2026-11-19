@@ -1,0 +1,10 @@
+build/
+.gradle/
+local.properties
+.idea/
+*.iml
+*.apk
+*.aab
+.DS_Store
+3rdparty/lua/src/
+engine/common/lua/cc_embedded.h
