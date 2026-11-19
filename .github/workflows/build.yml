@@ -1,0 +1,69 @@
+name: Build Engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  XASH_REPO: FWGS/xash3d-fwgs
+  XASH_REF: 707596f4905689ec224e993fcaa4d4ad66aa67d6
+  LUA_REPO: https://github.com/lua/lua.git
+  LUA_REF: v5.5.1
+  SDL_VERSION: 2.32.10
+  FFMPEG_VERSION: '9.0'
+  GH_CPU_OS: android
+  GH_CPU_ARCH: multiarch
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ env.XASH_REPO }}
+          ref: ${{ env.XASH_REF }}
+          submodules: recursive
+
+      - uses: actions/checkout@v7
+        with:
+          path: cybercore
+
+      - name: Fetch Lua
+        run: git clone --quiet --depth 1 --branch "$LUA_REF" "$LUA_REPO" 3rdparty/lua/src
+
+      - name: Apply CyberCore
+        run: python3 cybercore/scripts/prepare.py . cybercore
+
+      - name: Install dependencies
+        run: bash scripts/gha/deps_android.sh
+
+      - name: Read version
+        run: echo "VERSION=$(tr -d '[:space:]' < cybercore/VERSION)" >> "$GITHUB_ENV"
+
+      - name: Build Engine
+        run: bash scripts/gha/build_android.sh
+
+      - name: Rename APK
+        run: mv artifacts/xash3d-fwgs-android.apk "CyberCore Engine ${VERSION}.apk"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: CyberCore Engine ${{ env.VERSION }}
+          path: CyberCore Engine ${{ env.VERSION }}.apk
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="CyberCore Engine ${VERSION}.apk"
+          if gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "v${VERSION}" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "v${VERSION}" "$APK" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Release Version ${VERSION}" --notes "CyberCore Engine ${VERSION} for Android arm64-v8a"
+          fi
